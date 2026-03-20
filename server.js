@@ -1,9 +1,17 @@
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
+import cors from '@fastify/cors'
 
 const prisma = new PrismaClient()
 const fastify = Fastify({ 
   logger: true 
+})
+
+// --- CONFIGURAÇÕES (Plugins) ---
+
+// Registrar o CORS para permitir que o seu index.html acesse a API
+await fastify.register(cors, { 
+  origin: true 
 })
 
 // --- ROTAS ---
@@ -24,27 +32,66 @@ fastify.get('/posts', async (request, reply) => {
   }
 })
 
-// 3. Rota para CRIAR um novo post (CREATE)
-fastify.post('/posts', async (request, reply) => {
-  // Pegamos os dados que você envia no Thunder Client
-  const { title, content } = request.body 
+// 3. Rota para BUSCAR UM POST ESPECÍFICO pelo ID (READ Único)
+fastify.get('/posts/:id', async (request, reply) => {
+  const { id } = request.params
+  try {
+    const post = await prisma.post.findUnique({
+      where: { id: Number(id) }
+    })
 
+    if (!post) {
+      return reply.status(404).send({ error: "Post não encontrado" })
+    }
+    return post
+  } catch (error) {
+    return reply.status(500).send({ error: "Erro ao buscar o post" })
+  }
+})
+
+// 4. Rota para CRIAR um novo post (CREATE)
+fastify.post('/posts', async (request, reply) => {
+  const { title, content } = request.body 
   try {
     const newPost = await prisma.post.create({
       data: {
-        title: title,
-        content: content,
+        title,
+        content,
         published: true 
       }
     })
     return reply.status(201).send(newPost) 
   } catch (error) {
-    // Esse log vai aparecer no seu terminal do VS Code se o erro 500 voltar
     console.error("ERRO DETALHADO DO PRISMA:", error)
-    return reply.status(500).send({ 
-      error: "Erro ao criar post",
-      message: error.message 
+    return reply.status(500).send({ error: "Erro ao criar post" })
+  }
+})
+
+// 5. Rota para ATUALIZAR um post (UPDATE)
+fastify.put('/posts/:id', async (request, reply) => {
+  const { id } = request.params
+  const { title, content } = request.body 
+  try {
+    const updatedPost = await prisma.post.update({
+      where: { id: Number(id) },
+      data: { title, content }
     })
+    return updatedPost
+  } catch (error) {
+    return reply.status(404).send({ error: "Post não encontrado para editar" })
+  }
+})
+
+// 6. Rota para DELETAR um post (DELETE)
+fastify.delete('/posts/:id', async (request, reply) => {
+  const { id } = request.params
+  try {
+    await prisma.post.delete({
+      where: { id: Number(id) }
+    })
+    return { message: "Post deletado com sucesso! 🗑️" }
+  } catch (error) {
+    return reply.status(404).send({ error: "Post não encontrado para deletar" })
   }
 })
 
@@ -52,6 +99,7 @@ fastify.post('/posts', async (request, reply) => {
 
 const start = async () => {
   try {
+    // Usamos 0.0.0.0 para que o servidor aceite conexões externas (como seu index.html)
     await fastify.listen({ port: 3000, host: '0.0.0.0' })
     console.log("🚀 Servidor voando em http://localhost:3000")
   } catch (err) {
@@ -60,68 +108,5 @@ const start = async () => {
     process.exit(1)
   }
 }
-
-// 4. Rota para BUSCAR UM POST ESPECÍFICO pelo ID (GET único)
-fastify.get('/posts/:id', async (request, reply) => {
-  // O Fastify pega o valor que você digitar na URL e coloca em request.params
-  const { id } = request.params
-
-  try {
-    const post = await prisma.post.findUnique({
-      where: {
-        id: Number(id) // Convertemos para número porque o ID no banco é Int
-      }
-    })
-
-    // Se o post não existir, avisamos ao usuário
-    if (!post) {
-      return reply.status(404).send({ error: "Post não encontrado" })
-    }
-
-    return post
-  } catch (error) {
-    return reply.status(500).send({ error: "Erro ao buscar o post" })
-  }
-})
-
-// 5. Rota para DELETAR um post (DELETE)
-fastify.delete('/posts/:id', async (request, reply) => {
-  const { id } = request.params
-
-  try {
-    await prisma.post.delete({
-      where: {
-        id: Number(id)
-      }
-    })
-
-    return reply.status(200).send({ message: "Post deletado com sucesso! 🗑️" })
-  } catch (error) {
-    // Se tentar deletar um ID que não existe, o Prisma gera um erro
-    return reply.status(404).send({ error: "Não foi possível encontrar o post para deletar" })
-  }
-})
-
-// 6. Rota para ATUALIZAR um post (UPDATE)
-fastify.put('/posts/:id', async (request, reply) => {
-  const { id } = request.params
-  const { title, content } = request.body // Novos dados para o post
-
-  try {
-    const updatedPost = await prisma.post.update({
-      where: {
-        id: Number(id)
-      },
-      data: {
-        title: title,
-        content: content
-      }
-    })
-
-    return updatedPost
-  } catch (error) {
-    return reply.status(404).send({ error: "Post não encontrado para editar" })
-  }
-})
 
 start()
