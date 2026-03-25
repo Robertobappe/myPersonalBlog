@@ -3,110 +3,80 @@ import { PrismaClient } from '@prisma/client'
 import cors from '@fastify/cors'
 
 const prisma = new PrismaClient()
-const fastify = Fastify({ 
-  logger: true 
-})
+const fastify = Fastify({ logger: true })
 
-// --- CONFIGURAÇÕES (Plugins) ---
+// Configuração de CORS (Essencial para Vercel -> Render)
+await fastify.register(cors, { origin: true })
 
-// Registrar o CORS para permitir que o seu index.html acesse a API
-await fastify.register(cors, { 
-  origin: true 
-})
+// --- ROTAS CRUD ---
 
-// --- ROTAS ---
-
-// 1. Rota de Boas-vindas
-fastify.get('/', async (request, reply) => {
-  return { hello: 'Bem-vindo à API do meu Blog!' }
-})
-
-// 2. Rota para LISTAR os posts (READ)
+// [READ] - Listar todos
 fastify.get('/posts', async (request, reply) => {
-  try {
-    const posts = await prisma.post.findMany()
-    return posts
-  } catch (error) {
-    fastify.log.error(error)
-    return reply.status(500).send({ error: "Erro ao buscar posts" })
-  }
-})
-
-// 3. Rota para BUSCAR UM POST ESPECÍFICO pelo ID (READ Único)
-fastify.get('/posts/:id', async (request, reply) => {
-  const { id } = request.params
-  try {
-    const post = await prisma.post.findUnique({
-      where: { id: Number(id) }
-    })
-
-    if (!post) {
-      return reply.status(404).send({ error: "Post não encontrado" })
+    try {
+        return await prisma.post.findMany()
+    } catch (error) {
+        return reply.status(500).send({ error: "Erro ao buscar posts" })
     }
-    return post
-  } catch (error) {
-    return reply.status(500).send({ error: "Erro ao buscar o post" })
-  }
 })
 
-// 4. Rota para CRIAR um novo post (CREATE)
+// [READ] - Buscar um específico
+fastify.get('/posts/:id', async (request, reply) => {
+    const { id } = request.params
+    try {
+        const post = await prisma.post.findUnique({ where: { id: Number(id) } })
+        return post || reply.status(404).send({ error: "Post não encontrado" })
+    } catch (error) {
+        return reply.status(500).send({ error: "Erro ao buscar post" })
+    }
+})
+
+// [CREATE] - Criar novo
 fastify.post('/posts', async (request, reply) => {
-  const { title, content } = request.body 
-  try {
-    const newPost = await prisma.post.create({
-      data: {
-        title,
-        content,
-        published: true 
-      }
-    })
-    return reply.status(201).send(newPost) 
-  } catch (error) {
-    console.error("ERRO DETALHADO DO PRISMA:", error)
-    return reply.status(500).send({ error: "Erro ao criar post" })
-  }
+    const { title, content } = request.body 
+    try {
+        const newPost = await prisma.post.create({
+            data: { title, content, published: true }
+        })
+        return reply.status(201).send(newPost) 
+    } catch (error) {
+        return reply.status(500).send({ error: "Erro ao criar post" })
+    }
 })
 
-// 5. Rota para ATUALIZAR um post (UPDATE)
+// [UPDATE] - Editar post existente
 fastify.put('/posts/:id', async (request, reply) => {
-  const { id } = request.params
-  const { title, content } = request.body 
-  try {
-    const updatedPost = await prisma.post.update({
-      where: { id: Number(id) },
-      data: { title, content }
-    })
-    return updatedPost
-  } catch (error) {
-    return reply.status(404).send({ error: "Post não encontrado para editar" })
-  }
+    const { id } = request.params
+    const { title, content } = request.body 
+    try {
+        return await prisma.post.update({
+            where: { id: Number(id) },
+            data: { title, content }
+        })
+    } catch (error) {
+        return reply.status(404).send({ error: "Post não encontrado" })
+    }
 })
 
-// 6. Rota para DELETAR um post (DELETE)
+// [DELETE] - Apagar post
 fastify.delete('/posts/:id', async (request, reply) => {
-  const { id } = request.params
-  try {
-    await prisma.post.delete({
-      where: { id: Number(id) }
-    })
-    return { message: "Post deletado com sucesso! 🗑️" }
-  } catch (error) {
-    return reply.status(404).send({ error: "Post não encontrado para deletar" })
-  }
+    const { id } = request.params
+    try {
+        await prisma.post.delete({ where: { id: Number(id) } })
+        return { message: "Post deletado com sucesso! 🗑️" }
+    } catch (error) {
+        return reply.status(404).send({ error: "Erro ao deletar" })
+    }
 })
 
-// --- INICIALIZAÇÃO ---
-
+// --- INICIALIZAÇÃO (Padrão Render) ---
 const start = async () => {
-  try {
-    // Usamos 0.0.0.0 para que o servidor aceite conexões externas (como seu index.html)
-    await fastify.listen({ port: 3000, host: '0.0.0.0' })
-    console.log("🚀 Servidor voando em http://localhost:3000")
-  } catch (err) {
-    fastify.log.error(err)
-    await prisma.$disconnect()
-    process.exit(1)
-  }
+    try {
+        // process.env.PORT é o segredo para o Render não dar erro
+        await fastify.listen({ port: process.env.PORT || 3000, host: '0.0.0.0' })
+        console.log("🚀 API Online e pronta para receber requisições!")
+    } catch (err) {
+        fastify.log.error(err)
+        process.exit(1)
+    }
 }
-
 start()
